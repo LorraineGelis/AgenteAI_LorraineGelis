@@ -1,0 +1,409 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "1a933e87-1e7c-4cf4-92fc-e7d6efc9d5d6",
+      "name": "WhatsApp Trigger",
+      "webhookId": "709a55c6-717e-4321-ae3d-81da4a7c3b03",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "NvymtVtYKGKZZIvx",
+          "name": "WhatsApp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.messages[0].text.body }}",
+        "options": {
+          "systemMessage": "=Eres un asistente especializado en facturación y cartera, con acceso a PostgreSQL.  \nTu objetivo es ayudar a un cliente a consultar solo su información personal de cartera: facturas vencidas, pendientes y saldo en estados de cuenta.\n\nTABLAS DISPONIBLES:\n- clientes(id_cliente, nombre, identificacion, email, telefono, direccion)\n- facturas(id_factura, id_cliente, numero_factura, fecha_emision, fecha_vencimiento, monto_total, estado)\n- pagos(id_pago, id_factura, fecha_pago, monto)\n- estados_cuenta(id_estado, id_cliente, fecha_actualizacion, saldo_total)\n- historial_cobranzas(id_cobranza, id_cliente, id_factura, fecha, tipo_accion, descripcion, responsable)\n\nREGLAS:\n\n1. **Identificación de cliente**:  \n   - Si el usuario dice \"SOY [NOMBRE]\", busca ese nombre en la tabla `clientes`:\n     ```sql\n     SELECT id_cliente, nombre FROM clientes WHERE nombre ILIKE '%[NOMBRE]%';\n     ```\n   - Guarda el `id_cliente` como cliente activo en la memoria de conversación del wa_id.  \n   - Responde: \"Hola [NOMBRE], ya te identifiqué. ¿Qué deseas consultar: saldo pendiente, facturas vencidas o estado de cuenta?\"  \n\n2. **Consultas de cartera** (si ya hay cliente activo):  \n   - **Saldo pendiente**:\n     ```sql\n     SELECT saldo_total\n     FROM estados_cuenta\n     WHERE id_cliente = {{cliente_activo_id}};\n     ```\n   - **Facturas vencidas**:\n     ```sql\n     SELECT numero_factura, fecha_vencimiento, monto_total\n     FROM facturas\n     WHERE id_cliente = {{cliente_activo_id}}\n       AND estado = 'Vencida';\n     ```\n   - **Facturas pendientes o parciales**:\n     ```sql\n     SELECT numero_factura, fecha_vencimiento, monto_total, estado\n     FROM facturas\n     WHERE id_cliente = {{cliente_activo_id}}\n       AND estado IN ('Pendiente', 'Parcial');\n     ```\n\n3. **Si no hay cliente activo** y el usuario hace una pregunta sobre facturas o saldo, responde:\n   \"Por favor identifícate diciendo 'Soy, Nombre Completo ' para poder mostrar tu información de cartera.\"\n\n4. **Siempre**:\n   - Genera **solo consultas SELECT válidas**.  \n   - Nunca INSERT, UPDATE ni DELETE, excepto para la identificación del cliente si usas tabla de sesiones opcional.  \n   - Responde al usuario en **lenguaje natural**, usando los resultados de la consulta.  \n   - No muestres datos de otros clientes.\n\nEJEMPLOS:\n\nUsuario: \"SOY ANA TORRES\"  \nAsistente: \"Hola Ana Torres, ya te identifiqué. ¿Qué deseas consultar: saldo pendiente, facturas vencidas o estado de cuenta?\"  \n\nUsuario: \"¿Cuál es mi saldo pendiente?\"  \nAsistente (consulta interna):\n```sql\nSELECT saldo_total\nFROM estados_cuenta\nWHERE id_cliente = {{cliente_activo_id}};\n\n\nEsquema de base de datos (DDL):\n\nCREATE TABLE clientes (\n    id_cliente SERIAL PRIMARY KEY,\n    nombre VARCHAR(150) NOT NULL,\n    identificacion VARCHAR(50) UNIQUE NOT NULL,\n    email VARCHAR(100),\n    telefono VARCHAR(20),\n    direccion TEXT,\n    fecha_creacion TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE facturas (\n    id_factura SERIAL PRIMARY KEY,\n    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,\n    numero_factura VARCHAR(50) UNIQUE NOT NULL,\n    fecha_emision DATE NOT NULL,\n    fecha_vencimiento DATE NOT NULL,\n    monto_total NUMERIC(12,2) NOT NULL,\n    estado VARCHAR(20) CHECK (estado IN ('Pendiente', 'Pagada', 'Parcial', 'Vencida')) DEFAULT 'Pendiente'\n);\n\nCREATE TABLE pagos (\n    id_pago SERIAL PRIMARY KEY,\n    id_factura INT NOT NULL REFERENCES facturas(id_factura) ON DELETE CASCADE,\n    fecha_pago DATE NOT NULL,\n    monto NUMERIC(12,2) NOT NULL,\n    metodo_pago VARCHAR(50),\n    referencia_pago VARCHAR(100)\n);\n\nCREATE TABLE estados_cuenta (\n    id_estado SERIAL PRIMARY KEY,\n    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,\n    fecha_actualizacion TIMESTAMP DEFAULT NOW(),\n    saldo_total NUMERIC(12,2) NOT NULL\n);\n\nCREATE TABLE historial_cobranzas (\n    id_cobranza SERIAL PRIMARY KEY,\n    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,\n    id_factura INT REFERENCES facturas(id_factura) ON DELETE SET NULL,\n    fecha TIMESTAMP DEFAULT NOW(),\n    tipo_accion VARCHAR(50) C_\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "b49275a5-7356-451b-8d39-26318a392e59",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {
+          "presencePenalty": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        112,
+        208
+      ],
+      "id": "a37c7f90-4e5f-4d8d-8022-edf4e6685aec",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "xx0VtUilEpKQecce",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "733369349867457",
+        "recipientPhoneNumber": "+573016318252",
+        "textBody": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ],
+      "id": "d47b0fbe-e64e-41c1-a651-e5f3de63c1b7",
+      "name": "Send message",
+      "webhookId": "fbdad44b-30ea-4231-83a1-577f1c654472",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "OprNKlCg8hiQL4h7",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $fromAI('query') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        496,
+        192
+      ],
+      "id": "5ecaaa84-45f4-455d-885b-ffc54262022e",
+      "name": "Execute a SQL query in Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "KktH6h7pRhxZbv4V",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        256,
+        208
+      ],
+      "id": "4a73616c-6243-4983-8767-27816d31081c",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8f101a0b-b83e-4ef9-8dfb-b46d23270e62",
+              "leftValue": "={{ $json.clients }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        480
+      ],
+      "id": "5c6e7bff-6748-4cda-aa39-45d2b1083bd8",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.clients.email }}",
+        "subject": "Factura Vencida",
+        "emailType": "text",
+        "message": "=Hola {{ $json.clients.nombre }}, tu factura {{ $json.clients.numero_factura }} se encuentra vencida desde el {{ $json.clients.fecha_vencimiento.toString().substring(0, 10) }}.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        368
+      ],
+      "id": "c3c1e3ba-70e8-4b40-ae20-cd85e4083b56",
+      "name": "Send a message",
+      "webhookId": "7d989fd5-da91-47ad-929f-23c42b2f5ced",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "uyguvS3wI2rnFkLy",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        736,
+        576
+      ],
+      "id": "95488a34-bd2c-4bbd-91a0-130b05e7c46a",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    c.id_cliente,\n    c.nombre,\n    c.email,\n    c.telefono,\n    f.numero_factura,\n    f.fecha_emision,\n    f.fecha_vencimiento,\n    f.monto_total,\n    f.estado\nFROM clientes c\nINNER JOIN facturas f ON c.id_cliente = f.id_cliente\nWHERE f.estado = 'Vencida';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        176,
+        480
+      ],
+      "id": "95a1620c-34cd-4287-b43f-f656e417d618",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "KktH6h7pRhxZbv4V",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        480
+      ],
+      "id": "24cb36cf-894b-41b6-b157-a64054e2741b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "clients",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        336,
+        480
+      ],
+      "id": "450cd461-b3a7-42f8-855d-d5e7350b38b1",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "clients",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        768,
+        368
+      ],
+      "id": "5d4e1b01-0fc4-47f0-85bd-208af09d3872",
+      "name": "Split Out"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query in Postgres": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send message": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f3e63031-f0f6-4810-9d7d-79a78a1708f9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "afc6984a03df0d5dab701de33e6bf8a8392d402ad0a64dca263c38c0befe27f1"
+  },
+  "id": "CzQyIedNfKX2gubS",
+  "tags": []
+}
